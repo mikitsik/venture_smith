@@ -265,25 +265,25 @@ Find startup opportunities I can build in 30 days.
 Potential output:
 
 ```text
-AI Documentation Search
+GitHub Issue Triage Copilot
 
-Score: 91
+Market Signal:
+Growing issue-management complaints across multiple repositories.
 
-Problem:
-Developers struggle to find relevant information in large documentation sets.
+Founder Match:
+93
 
-Evidence:
-42 Hacker News comments
-17 GitHub issues
+Why now:
+Discussion volume increased 240% during the last 30 days.
 
 Why you:
-Strong Rails fit
-Low infrastructure complexity
+Strong Rails fit.
+Can be shipped as an MVP within 30 days.
 
 30-Day MVP:
-Week 1 — ingestion
-Week 2 — search engine
-Week 3 — ranking
+Week 1 — issue ingestion
+Week 2 — duplicate detection
+Week 3 — maintainer dashboard
 Week 4 — deployment
 ```
 
