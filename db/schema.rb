@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_06_194937) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_06_201413) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -36,12 +36,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_194937) do
     t.datetime "created_at", null: false
     t.text "evidence_summary"
     t.jsonb "mvp_plan", default: [], null: false
+    t.string "passport_id"
+    t.string "passport_metadata_hash"
+    t.string "passport_metadata_uri"
+    t.string "passport_tx_hash"
     t.text "problem", null: false
     t.integer "score", null: false
     t.bigint "scout_run_id", null: false
     t.integer "time_fit"
     t.string "title", null: false
     t.datetime "updated_at", null: false
+    t.index ["passport_id"], name: "index_opportunities_on_passport_id", unique: true
+    t.index ["passport_metadata_hash"], name: "index_opportunities_on_passport_metadata_hash"
+    t.index ["passport_tx_hash"], name: "index_opportunities_on_passport_tx_hash"
     t.index ["score"], name: "index_opportunities_on_score"
     t.index ["scout_run_id"], name: "index_opportunities_on_scout_run_id"
   end
