@@ -18,64 +18,49 @@ interface ILlmInferenceAgent {
 }
 
 contract VentureSmithRegistry is IAgentRequesterHandler {
-    enum Status {
-        Requested,
-        AgentRequested,
-        Completed,
-        Failed
-    }
-
-    struct ScoutRun {
+    struct OpportunityPassport {
         address founder;
-        bytes32 profileHash;
-        string goal;
-        string metadataURI;
-        Status status;
+        bytes32 metadataHash;
         uint16 score;
         bytes32 resultHash;
-        uint256 agentRequestId;
-        uint256 createdAt;
-        uint256 completedAt;
     }
 
     IAgentRequester public immutable platform;
 
     address public owner;
     uint256 public llmAgentId;
-    uint256 public nextRunId = 1;
+    uint256 public nextPassportId = 1;
 
     uint256 public constant SUBCOMMITTEE_SIZE = 3;
     uint256 public constant LLM_PRICE_PER_AGENT = 0.07 ether;
 
-    mapping(uint256 => ScoutRun) private scoutRuns;
-    mapping(uint256 => uint256) public requestToRunId;
+    mapping(uint256 => OpportunityPassport) private passports;
+    mapping(uint256 => uint256) public requestToPassportId;
     mapping(uint256 => bool) public pendingRequests;
 
-    event ScoutRunCreated(
-        uint256 indexed runId,
+    event OpportunityPassportCreated(
+        uint256 indexed passportId,
         address indexed founder,
-        bytes32 indexed profileHash,
-        string goal,
+        bytes32 indexed metadataHash,
         string metadataURI
     );
 
-    event ScoutAgentRequested(
-        uint256 indexed runId,
+    event OpportunityEvaluationRequested(
+        uint256 indexed passportId,
         uint256 indexed requestId,
         uint256 indexed agentId
     );
 
-    event ScoutRunCompleted(
-        uint256 indexed runId,
+    event OpportunityPassportEvaluated(
+        uint256 indexed passportId,
         address indexed founder,
         uint16 score,
         bytes32 indexed resultHash
     );
 
-    event ScoutRunFailed(
-        uint256 indexed runId,
-        address indexed founder,
-        bytes32 indexed resultHash
+    event OpportunityPassportFailed(
+        uint256 indexed passportId,
+        address indexed founder
     );
 
     event LlmAgentUpdated(uint256 indexed oldAgentId, uint256 indexed newAgentId);
@@ -100,56 +85,51 @@ contract VentureSmithRegistry is IAgentRequesterHandler {
         emit LlmAgentUpdated(oldAgentId, newLlmAgentId);
     }
 
-    function createScoutRun(
-        bytes32 profileHash,
-        string calldata goal,
+    function createOpportunityPassport(
+        bytes32 metadataHash,
         string calldata metadataURI
-    ) external returns (uint256 runId) {
-        require(bytes(goal).length > 0, "Empty goal");
+    ) external returns (uint256 passportId) {
+        require(metadataHash != bytes32(0), "Empty metadata hash");
+        require(bytes(metadataURI).length > 0, "Empty metadata URI");
 
-        runId = nextRunId;
-        nextRunId += 1;
+        passportId = nextPassportId;
+        nextPassportId += 1;
 
-        scoutRuns[runId] = ScoutRun({
+        passports[passportId] = OpportunityPassport({
             founder: msg.sender,
-            profileHash: profileHash,
-            goal: goal,
-            metadataURI: metadataURI,
-            status: Status.Requested,
+            metadataHash: metadataHash,
             score: 0,
-            resultHash: bytes32(0),
-            agentRequestId: 0,
-            createdAt: block.timestamp,
-            completedAt: 0
+            resultHash: bytes32(0)
         });
 
-        emit ScoutRunCreated(runId, msg.sender, profileHash, goal, metadataURI);
+        emit OpportunityPassportCreated(
+            passportId,
+            msg.sender,
+            metadataHash,
+            metadataURI
+        );
     }
 
-    function requestScoutScore(uint256 runId) external payable returns (uint256 requestId) {
-        ScoutRun storage run = scoutRuns[runId];
+    function requestOpportunityEvaluation(
+        uint256 passportId,
+        string calldata evaluationPrompt
+    ) external payable returns (uint256 requestId) {
+        OpportunityPassport storage passport = passports[passportId];
 
-        require(run.founder != address(0), "Run not found");
-        require(run.status == Status.Requested, "Run not requestable");
-        require(msg.sender == run.founder, "Not founder");
+        require(passport.founder != address(0), "Passport not found");
+        require(msg.sender == passport.founder, "Not founder");
+        require(passport.resultHash == bytes32(0), "Already evaluated");
         require(llmAgentId != 0, "LLM agent not set");
-
-        string memory prompt = string.concat(
-            "You are scoring a startup opportunity for a solo Ruby on Rails founder. ",
-            "Return only one integer from 0 to 100. ",
-            "Score founder fit, market pain, MVP feasibility, and 30-day build potential. ",
-            "Goal: ",
-            run.goal
-        );
+        require(bytes(evaluationPrompt).length > 0, "Empty prompt");
 
         bytes memory payload = abi.encodeWithSelector(
             ILlmInferenceAgent.inferNumber.selector,
-            prompt,
+            evaluationPrompt,
             int256(0),
             int256(100)
         );
 
-        uint256 deposit = requiredScoutScoreDeposit();
+        uint256 deposit = requiredEvaluationDeposit();
         require(msg.value >= deposit, "Underfunded");
 
         requestId = platform.createRequest{value: deposit}(
@@ -159,16 +139,13 @@ contract VentureSmithRegistry is IAgentRequesterHandler {
             payload
         );
 
-        run.status = Status.AgentRequested;
-        run.agentRequestId = requestId;
-
-        requestToRunId[requestId] = runId;
+        requestToPassportId[requestId] = passportId;
         pendingRequests[requestId] = true;
 
-        emit ScoutAgentRequested(runId, requestId, llmAgentId);
+        emit OpportunityEvaluationRequested(passportId, requestId, llmAgentId);
     }
 
-    function requiredScoutScoreDeposit() public view returns (uint256) {
+    function requiredEvaluationDeposit() public view returns (uint256) {
         return platform.getRequestDeposit() + (LLM_PRICE_PER_AGENT * SUBCOMMITTEE_SIZE);
     }
 
@@ -183,40 +160,37 @@ contract VentureSmithRegistry is IAgentRequesterHandler {
 
         pendingRequests[requestId] = false;
 
-        uint256 runId = requestToRunId[requestId];
-        ScoutRun storage run = scoutRuns[runId];
+        uint256 passportId = requestToPassportId[requestId];
+        OpportunityPassport storage passport = passports[passportId];
 
         if (status == ResponseStatus.Success && responses.length > 0) {
             int256 rawScore = abi.decode(responses[0].result, (int256));
 
-            if (rawScore < 0) {
-                rawScore = 0;
-            }
-
-            if (rawScore > 100) {
-                rawScore = 100;
-            }
+            if (rawScore < 0) rawScore = 0;
+            if (rawScore > 100) rawScore = 100;
 
             uint16 score = uint16(uint256(rawScore));
+            bytes32 resultHash = keccak256(responses[0].result);
 
-            run.status = Status.Completed;
-            run.score = score;
-            run.resultHash = keccak256(responses[0].result);
-            run.completedAt = block.timestamp;
+            passport.score = score;
+            passport.resultHash = resultHash;
 
-            emit ScoutRunCompleted(runId, run.founder, score, run.resultHash);
+            emit OpportunityPassportEvaluated(
+                passportId,
+                passport.founder,
+                score,
+                resultHash
+            );
         } else {
-            run.status = Status.Failed;
-            run.resultHash = bytes32(0);
-            run.completedAt = block.timestamp;
-
-            emit ScoutRunFailed(runId, run.founder, bytes32(0));
+            emit OpportunityPassportFailed(passportId, passport.founder);
         }
     }
 
-    function getScoutRun(uint256 runId) external view returns (ScoutRun memory) {
-        require(scoutRuns[runId].founder != address(0), "Run not found");
-        return scoutRuns[runId];
+    function getOpportunityPassport(
+        uint256 passportId
+    ) external view returns (OpportunityPassport memory) {
+        require(passports[passportId].founder != address(0), "Passport not found");
+        return passports[passportId];
     }
 
     receive() external payable {}
