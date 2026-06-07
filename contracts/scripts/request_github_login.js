@@ -112,12 +112,21 @@ async function main() {
   console.log("Last sender:", callback.lastSender);
   console.log("Last data:", callback.lastData);
 
+  const decoded = decodeCallbackData(callback.lastData);
+  const [result] = agentInterface.decodeFunctionResult(
+    "fetchString",
+    decoded.responses[0].result
+  );
+
+  console.log("Decoded result:", result);
+
   console.log(JSON.stringify({
     tx_hash: tx.hash,
     request_id: requestId.toString(),
     callback_count: callback.callbackCount.toString(),
     callback_sender: callback.lastSender,
-    callback_data: callback.lastData
+    callback_data: callback.lastData,
+    result
   }));
 }
 
@@ -164,6 +173,35 @@ async function waitForCallback(receiver, callbackCountBefore) {
   }
 
   throw new Error("Timed out waiting for callback");
+}
+
+function decodeCallbackData(rawData) {
+  const abiCoder = hre.ethers.AbiCoder.defaultAbiCoder();
+
+  const encodedArgs = `0x${rawData.slice(10)}`;
+
+  const responseType =
+    "tuple(address validator,bytes result,uint8 status,uint256 receipt,uint256 timestamp,uint256 executionCost)";
+
+  const requestType =
+    `tuple(uint256 id,address requester,address callbackAddress,bytes4 callbackSelector,address[] subcommittee,${responseType}[] responses,uint256 responseCount,uint256 failureCount,uint256 threshold,uint256 createdAt,uint256 deadline,uint8 status,uint8 consensusType,uint256 remainingBudget,uint256 perAgentBudget)`;
+
+  const [requestId, responses, status, request] = abiCoder.decode(
+    [
+      "uint256",
+      `${responseType}[]`,
+      "uint8",
+      requestType
+    ],
+    encodedArgs
+  );
+
+  return {
+    requestId,
+    responses,
+    status,
+    request
+  };
 }
 
 function sleep(ms) {
